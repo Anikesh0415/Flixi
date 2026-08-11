@@ -208,6 +208,11 @@ func DispatchIntent(intent string) (string, error) {
 	return "Reached maximum planning steps", nil
 }
 
+var (
+	shouldWake   bool
+	shouldWakeMu sync.Mutex
+)
+
 func startUIServer() {
 	http.HandleFunc("/intent", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -230,6 +235,33 @@ func startUIServer() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	http.HandleFunc("/wake", func(w http.ResponseWriter, r *http.Request) {
+		shouldWakeMu.Lock()
+		shouldWake = true
+		shouldWakeMu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	http.HandleFunc("/poll", func(w http.ResponseWriter, r *http.Request) {
+		shouldWakeMu.Lock()
+		woke := shouldWake
+		shouldWake = false
+		shouldWakeMu.Unlock()
+
+		if woke {
+			w.Write([]byte("WAKE"))
+		} else {
+			w.Write([]byte("IDLE"))
+		}
+	})
+
+	// Start the background wakeword listener
+	go func() {
+		cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "pkg/voice/wakeword.ps1")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		cmd.Run()
+	}()
+
 	log.Fatal(http.ListenAndServe("127.0.0.1:18080", nil))
 }
 
@@ -240,6 +272,11 @@ using System.Runtime.InteropServices;
 public class WinH {
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
     public static void Press() {
         keybd_event(0x5B, 0, 0, 0); // LWIN down
         keybd_event(0x48, 0, 0, 0); // H down
@@ -300,17 +337,34 @@ $global:voiceTimer.Add_Tick({
     }
 })
 
+$global:wakePollTimer = New-Object System.Windows.Threading.DispatcherTimer
+$global:wakePollTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+$global:wakePollTimer.Add_Tick({
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:18080/poll" -ErrorAction SilentlyContinue
+    if ($res -eq "WAKE") {
+        if ($win.WindowState -eq 'Minimized') {
+            $win.WindowState = 'Normal'
+        }
+        $win.Activate()
+        $micBtn.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+    }
+})
+$global:wakePollTimer.Start()
+
 $micBtn.Add_Click({
     $global:isVoiceMode = $true
-    $inputBox.Text = "Listening (Win+H)..."
-    $inputBox.Foreground = "#00FFFF"
-    $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
     
-    Start-Sleep -Milliseconds 200
+    # Aggressively force Flixi to the foreground so Win+H types into it
+    $hwnd = (New-Object System.Windows.Interop.WindowInteropHelper($win)).Handle
+    [WinH]::SetForegroundWindow($hwnd) | Out-Null
+    
     $inputBox.Text = ""
     $inputBox.Foreground = "White"
-    $inputBox.Focus()
-
+    $inputBox.Focus() | Out-Null
+    
+    # Flush all pending UI render/focus events before hitting Win+H
+    $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::ContextIdle)
+    
     [WinH]::Press()
 })
 
