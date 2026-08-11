@@ -1,8 +1,7 @@
-# Forge OS 🚀
+# Flixi 🚀
+### The Ultimate Local AI Automation OS for Consumers
 
-Forge OS is an incredibly fast, ultra-lightweight, zero-RAM GUI Agent for Windows that acts as the physical brain and hands for your PC.
-
-Written entirely in **pure Go**, Forge achieves a true **Zero-RAM footprint** when idle. It combines real-time event-driven UI Automation (UIA), native Windows Hooks, local SQLite long-term memory, localized AI Planning, remote Telegram control, offline voice input, GBNF-constrained JSON parsing, an FSA state-machine safeguard engine, and a live glassmorphism HUD — all with zero cloud dependencies.
+Written entirely in **pure Go**, Flixi achieves a true **Zero-RAM footprint** when idle. It combines real-time event-driven UI Automation (UIA), native Windows Hooks, local SQLite long-term memory, localized AI Planning, remote Telegram control, offline voice input, GBNF-constrained JSON parsing, an FSA state-machine safeguard engine, and a live glassmorphism HUD — all with zero cloud dependencies.
 
 ---
 

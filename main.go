@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -49,6 +52,8 @@ func main() {
 			go telegram.StartListener(ctx, botToken, allowedChatID, DispatchIntent)
 		}
 	}
+
+	go startUIServer()
 
 	for {
 		handleSummon()
@@ -203,6 +208,31 @@ func DispatchIntent(intent string) (string, error) {
 	return "Reached maximum planning steps", nil
 }
 
+func startUIServer() {
+	http.HandleFunc("/intent", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		intent := strings.TrimSpace(string(body))
+		if intent == "" {
+			return
+		}
+		if strings.ToLower(intent) == "exit" || strings.ToLower(intent) == "quit" {
+			os.Exit(0)
+		}
+		
+		go func() {
+			res, err := DispatchIntent(intent)
+			if err != nil {
+				fmt.Printf("Dispatch error: %v\n", err)
+			} else {
+				fmt.Printf("Dispatch result: %s\n", res)
+			}
+		}()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	log.Fatal(http.ListenAndServe("127.0.0.1:18080", nil))
+}
+
 func handleSummon() {
 	// 1. Pop up native WPF Input Box
 	ps1Script := `
@@ -224,6 +254,7 @@ $xaml = @"
             <TextBox Name="InputBox" Grid.Column="0" Margin="3,0,5,0" Padding="0,0,0,0" Background="Transparent" Foreground="White" CaretBrush="White"
                      BorderThickness="0" FontSize="16" VerticalAlignment="Center" FontFamily="Segoe UI" FontWeight="Light"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Name="MicBtn" Content="&#x1F3A4;" Foreground="White" Background="Transparent" BorderThickness="0" FontSize="16" Margin="0,0,10,0" Cursor="Hand" ToolTip="Voice Command"/>
                 <Button Name="MinimizeBtn" Content=" _ " Foreground="White" Background="Transparent" BorderThickness="0" FontSize="12" Margin="0,0,8,0" Cursor="Hand" ToolTip="Minimize"/>
                 <Button Name="CloseBtn" Content=" X " Foreground="White" Background="Transparent" BorderThickness="0" FontSize="12" Cursor="Hand" ToolTip="Close"/>
             </StackPanel>
@@ -235,12 +266,48 @@ $reader = (New-Object System.Xml.XmlNodeReader ([xml]$xaml))
 $win = [Windows.Markup.XamlReader]::Load($reader)
 $inputBox = $win.FindName("InputBox")
 $placeholder = $win.FindName("Placeholder")
+$micBtn = $win.FindName("MicBtn")
 $minBtn = $win.FindName("MinimizeBtn")
 $closeBtn = $win.FindName("CloseBtn")
 
 $win.Add_MouseLeftButtonDown({ $win.DragMove() })
 $minBtn.Add_Click({ $win.WindowState = 'Minimized' })
 $closeBtn.Add_Click({ $win.Close() })
+
+$micBtn.Add_Click({
+    $originalText = $inputBox.Text
+    $inputBox.Text = "[Listening...]"
+    $inputBox.Foreground = "#FF4444"
+    $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
+    
+    try {
+        Add-Type -AssemblyName System.Speech
+        $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+        $grammar = New-Object System.Speech.Recognition.DictationGrammar
+        $engine.LoadGrammar($grammar)
+        $engine.SetInputToDefaultAudioDevice()
+        $res = $engine.Recognize([TimeSpan]::FromSeconds(5))
+        
+        if ($res -and $res.Text) {
+            $inputBox.Text = $res.Text
+            $inputBox.Foreground = "White"
+            $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
+            
+            # Submit to Go backend automatically
+            Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text
+            Start-Sleep -Milliseconds 500
+            $inputBox.Text = ""
+        } else {
+            $inputBox.Text = $originalText
+            $inputBox.Foreground = "White"
+        }
+    } catch {
+        $inputBox.Text = $originalText
+        $inputBox.Foreground = "White"
+    }
+    
+    $inputBox.Focus()
+})
 
 $win.Add_Loaded({ 
     $win.Top = 15
@@ -255,8 +322,10 @@ $inputBox.Add_TextChanged({
 })
 $inputBox.Add_KeyDown({
     if ($_.Key -eq 'Enter') {
-        [Console]::Out.WriteLine($inputBox.Text)
-        $win.Close()
+        if ($inputBox.Text -ne "") {
+            Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text
+            $inputBox.Text = ""
+        }
     }
     if ($_.Key -eq 'Escape') {
         $win.Close()
@@ -267,26 +336,11 @@ $win.ShowDialog() | Out-Null
 	os.WriteFile("input.ps1", []byte(ps1Script), 0644)
 	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "input.ps1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	out, err := cmd.Output()
-	if err != nil {
-		return
-	}
+	cmd.Run()
+	
+	// When UI is closed, exit the program completely
+	os.Exit(0)
 
-	intent := strings.TrimSpace(string(out))
-	if intent == "" {
-		os.Exit(0)
-	}
-
-	if strings.ToLower(intent) == "exit" || strings.ToLower(intent) == "quit" {
-		os.Exit(0)
-	}
-
-	res, err := DispatchIntent(intent)
-	if err != nil {
-		fmt.Printf("Dispatch error: %v\n", err)
-	} else {
-		fmt.Printf("Dispatch result: %s\n", res)
-	}
 }
 
 type SecurityState int
