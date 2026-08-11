@@ -288,7 +288,20 @@ $win.Add_MouseLeftButtonDown({ $win.DragMove() })
 $minBtn.Add_Click({ $win.WindowState = 'Minimized' })
 $closeBtn.Add_Click({ $win.Close() })
 
+$global:isVoiceMode = $false
+$global:voiceTimer = New-Object System.Windows.Threading.DispatcherTimer
+$global:voiceTimer.Interval = [TimeSpan]::FromSeconds(2)
+$global:voiceTimer.Add_Tick({
+    $global:voiceTimer.Stop()
+    $global:isVoiceMode = $false
+    if ($inputBox.Text -ne "") {
+        Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text
+        $inputBox.Text = ""
+    }
+})
+
 $micBtn.Add_Click({
+    $global:isVoiceMode = $true
     $inputBox.Text = "Listening (Win+H)..."
     $inputBox.Foreground = "#00FFFF"
     $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
@@ -311,15 +324,26 @@ $inputBox.Add_TextChanged({
     } else {
         $placeholder.Visibility = 'Hidden'
     }
+    
+    if ($global:isVoiceMode) {
+        $global:voiceTimer.Stop()
+        if ($inputBox.Text -ne "") {
+            $global:voiceTimer.Start()
+        }
+    }
 })
 $inputBox.Add_KeyDown({
     if ($_.Key -eq 'Enter') {
+        $global:isVoiceMode = $false
+        $global:voiceTimer.Stop()
         if ($inputBox.Text -ne "") {
             Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text
             $inputBox.Text = ""
         }
     }
     if ($_.Key -eq 'Escape') {
+        $global:isVoiceMode = $false
+        $global:voiceTimer.Stop()
         $win.Close()
     }
 })
