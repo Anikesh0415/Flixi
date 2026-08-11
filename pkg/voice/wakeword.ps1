@@ -13,14 +13,16 @@ $grammar = New-Object System.Speech.Recognition.Grammar($grammarBuilder)
 $engine.LoadGrammar($grammar)
 $engine.SetInputToDefaultAudioDevice()
 
-while ($true) {
-    try {
-        $res = $engine.Recognize([TimeSpan]::FromHours(1))
-        if ($res -and $res.Text -match "hey flix|hey flex") {
-            Invoke-RestMethod -Uri "http://127.0.0.1:18080/wake" -Method Post -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 3 # Debounce
-        }
-    } catch {
-        Start-Sleep -Seconds 1
+Register-ObjectEvent -InputObject $engine -EventName "SpeechRecognized" -Action {
+    $text = $Event.SourceEventArgs.Result.Text
+    if ($text -match "hey flix|hey flex") {
+        Invoke-RestMethod -Uri "http://127.0.0.1:18080/wake" -Method Post -ErrorAction SilentlyContinue
     }
+}
+
+$engine.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
+
+# Keep the script running forever
+while ($true) {
+    Start-Sleep -Seconds 1
 }
