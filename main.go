@@ -234,8 +234,22 @@ func startUIServer() {
 }
 
 func handleSummon() {
-	// 1. Pop up native WPF Input Box
 	ps1Script := `
+$code = @"
+using System.Runtime.InteropServices;
+public class WinH {
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    public static void Press() {
+        keybd_event(0x5B, 0, 0, 0); // LWIN down
+        keybd_event(0x48, 0, 0, 0); // H down
+        keybd_event(0x48, 0, 2, 0); // H up
+        keybd_event(0x5B, 0, 2, 0); // LWIN up
+    }
+}
+"@
+try { Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue } catch {}
+
 Add-Type -AssemblyName PresentationFramework
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -275,38 +289,16 @@ $minBtn.Add_Click({ $win.WindowState = 'Minimized' })
 $closeBtn.Add_Click({ $win.Close() })
 
 $micBtn.Add_Click({
-    $originalText = $inputBox.Text
-    $inputBox.Text = "[Listening...]"
-    $inputBox.Foreground = "#FF4444"
+    $inputBox.Text = "Listening (Win+H)..."
+    $inputBox.Foreground = "#00FFFF"
     $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
     
-    try {
-        Add-Type -AssemblyName System.Speech
-        $engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
-        $grammar = New-Object System.Speech.Recognition.DictationGrammar
-        $engine.LoadGrammar($grammar)
-        $engine.SetInputToDefaultAudioDevice()
-        $res = $engine.Recognize([TimeSpan]::FromSeconds(5))
-        
-        if ($res -and $res.Text) {
-            $inputBox.Text = $res.Text
-            $inputBox.Foreground = "White"
-            $win.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
-            
-            # Submit to Go backend automatically
-            Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text
-            Start-Sleep -Milliseconds 500
-            $inputBox.Text = ""
-        } else {
-            $inputBox.Text = $originalText
-            $inputBox.Foreground = "White"
-        }
-    } catch {
-        $inputBox.Text = $originalText
-        $inputBox.Foreground = "White"
-    }
-    
+    Start-Sleep -Milliseconds 200
+    $inputBox.Text = ""
+    $inputBox.Foreground = "White"
     $inputBox.Focus()
+
+    [WinH]::Press()
 })
 
 $win.Add_Loaded({ 
