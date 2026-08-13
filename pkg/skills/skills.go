@@ -95,13 +95,15 @@ func matchSingleIntent(intent string) Skill {
 	// 2. Fallback to registered memory skills (for builtins)
 	for _, s := range Registry {
 		if ds, ok := s.(*DynamicSkill); ok {
-			vars, match := ExtractVariables(intent, ds.SkillName)
-			if match {
-				score := 0
-				if len(vars) == 0 { 
-					_, score = FuzzyMatchWithScore(intent, ds.SkillName)
-				}
-				if score < bestScore {
+			// Check exact/variable match
+			_, exactMatch := ExtractVariables(intent, ds.SkillName)
+			if exactMatch {
+				bestScore = 0
+				bestSkill = s
+			} else if !strings.Contains(ds.SkillName, "{") {
+				// If it has no variables, we can attempt a fuzzy match
+				isFuzzy, score := FuzzyMatchWithScore(intent, ds.SkillName)
+				if isFuzzy && score < bestScore {
 					bestScore = score
 					bestSkill = s
 				}
