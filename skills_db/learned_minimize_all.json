@@ -3,7 +3,7 @@
   "actions": [
     {
       "type": "key",
-      "key": "win+m"
+      "key": "win+d"
     }
   ]
 }

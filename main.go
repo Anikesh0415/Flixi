@@ -40,6 +40,7 @@ func main() {
 	recorder.StartHooks()
 	skills.InitBuiltinSkills()
 	skills.LoadLearnedSkills()
+	skills.LoadAppActionsDatabase()
 
 	// Initialize Telegram Listener if configured in environment
 	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
@@ -268,6 +269,7 @@ func startUIServer() {
 func handleSummon() {
 	ps1Script := `
 $code = @"
+using System;
 using System.Runtime.InteropServices;
 public class WinH {
     [DllImport("user32.dll")]
@@ -291,7 +293,7 @@ Add-Type -AssemblyName PresentationFramework
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Forge" Width="450" Height="46" 
+        Title="Flixi" Width="450" Height="46" 
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         WindowStartupLocation="CenterScreen" Topmost="True">
     <Border CornerRadius="22" Background="#CC000000" BorderBrush="#33FFFFFF" BorderThickness="1" Margin="2">
@@ -300,7 +302,7 @@ $xaml = @"
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Name="Placeholder" Grid.Column="0" Text="What do you want to automate?" Foreground="#88FFFFFF" FontSize="16" 
+            <TextBlock Name="Placeholder" Grid.Column="0" Text="Say 'Hey Flixi' or type here..." Foreground="#88FFFFFF" FontSize="16" 
                        VerticalAlignment="Center" Margin="5,0,0,0" IsHitTestVisible="False" FontFamily="Segoe UI" FontWeight="Light"/>
             <TextBox Name="InputBox" Grid.Column="0" Margin="3,0,5,0" Padding="0,0,0,0" Background="Transparent" Foreground="White" CaretBrush="White"
                      BorderThickness="0" FontSize="16" VerticalAlignment="Center" FontFamily="Segoe UI" FontWeight="Light"/>
@@ -327,12 +329,14 @@ $closeBtn.Add_Click({ $win.Close() })
 
 $global:isVoiceMode = $false
 $global:voiceTimer = New-Object System.Windows.Threading.DispatcherTimer
-$global:voiceTimer.Interval = [TimeSpan]::FromSeconds(2)
+$global:voiceTimer.Interval = [TimeSpan]::FromSeconds(1)
 $global:voiceTimer.Add_Tick({
     $global:voiceTimer.Stop()
     $global:isVoiceMode = $false
     if ($inputBox.Text -ne "") {
-        Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text
+        try {
+            Invoke-RestMethod -Uri "http://127.0.0.1:18080/intent" -Method Post -Body $inputBox.Text -ErrorAction SilentlyContinue
+        } catch {}
         $inputBox.Text = ""
     }
 })
@@ -406,6 +410,7 @@ $win.ShowDialog() | Out-Null
 	os.WriteFile("input.ps1", []byte(ps1Script), 0644)
 	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "input.ps1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
 	cmd.Run()
 	
 	// When UI is closed, exit the program completely

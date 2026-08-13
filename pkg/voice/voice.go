@@ -121,29 +121,16 @@ func CaptureAndTranscribeWithContext(ctx context.Context, timeoutSec int) (strin
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec+3)*time.Second)
 	defer cancel()
 
-	scriptPath := getScriptPath()
+	scriptPath := filepath.Join("pkg", "voice", "voice_listen.py")
+	modelPath := filepath.Join("pkg", "voice", "model")
 
-	cmd := exec.CommandContext(timeoutCtx, "powershell", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-TimeoutSeconds", fmt.Sprintf("%d", timeoutSec))
+	// We pipe stderr to null so we don't get Vosk's debug logs in the output text
+	cmd := exec.CommandContext(timeoutCtx, "python", scriptPath, "--model", modelPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	out, err := cmd.Output()
 	if err != nil {
-		// Fallback to inline PowerShell SAPI dictation command
-		psCmd := fmt.Sprintf(`
-Add-Type -AssemblyName System.Speech
-$engine = New-Object System.Speech.Recognition.SpeechRecognitionEngine
-$grammar = New-Object System.Speech.Recognition.DictationGrammar
-$engine.LoadGrammar($grammar)
-$engine.SetInputToDefaultAudioDevice()
-$res = $engine.Recognize([TimeSpan]::FromSeconds(%d))
-if ($res -and $res.Text) { Write-Output $res.Text }
-`, timeoutSec)
-		cmdFallback := exec.CommandContext(timeoutCtx, "powershell", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
-		cmdFallback.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		out, err = cmdFallback.Output()
-		if err != nil {
-			return "", fmt.Errorf("voice transcription failed: %w", err)
-		}
+		return "", fmt.Errorf("voice transcription failed: %w", err)
 	}
 
 	text := strings.TrimSpace(string(out))

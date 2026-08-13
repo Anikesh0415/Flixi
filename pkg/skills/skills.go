@@ -1,12 +1,14 @@
 package skills
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"forge/pkg/executor"
 	"os"
 	"path/filepath"
 	"strings"
+	_ "modernc.org/sqlite"
 )
 
 type Skill interface {
@@ -21,19 +23,63 @@ func Register(s Skill) {
 	Registry = append(Registry, s)
 }
 
+// ... existing skills code ...
+// We will insert Database matching inside MatchIntent.
+
 func MatchIntent(intent string) Skill {
+	// 0. Handle Intent Chaining (Multi-Step Mega Macros)
+	parts := strings.Split(intent, " then ")
+	if len(parts) > 1 {
+		var chainedActions []executor.Action
+		matchedAll := true
+
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			partSkill := matchSingleIntent(part)
+			if partSkill == nil {
+				matchedAll = false
+				break
+			}
+			
+			// If it's a DynamicSkill, we can extract and append its actions
+			if ds, ok := partSkill.(*DynamicSkill); ok {
+				chainedActions = append(chainedActions, ds.Actions...)
+			} else {
+				// Built-in Go skills can't easily be chained into JSON macros,
+				// so we fail the chain and let fallback handle it.
+				matchedAll = false
+				break
+			}
+		}
+
+		if matchedAll && len(chainedActions) > 0 {
+			return &DynamicSkill{
+				SkillName: intent, // The full chained string
+				Actions:   chainedActions,
+			}
+		}
+	}
+
+	return matchSingleIntent(intent)
+}
+
+func matchSingleIntent(intent string) Skill {
 	var bestSkill Skill
 	bestScore := 9999
 
+	// 1. Check Database first! (O(1) lookup speed)
+	dbSkill := matchIntentFromDB(intent)
+	if dbSkill != nil {
+		return dbSkill
+	}
+
+	// 2. Fallback to registered memory skills (for builtins)
 	for _, s := range Registry {
 		if ds, ok := s.(*DynamicSkill); ok {
-			// First try variable extraction
 			vars, match := ExtractVariables(intent, ds.SkillName)
 			if match {
-				// We can prioritize perfect matches with 0 penalty,
-				// but for now if extraction succeeds, it's a very strong match.
 				score := 0
-				if len(vars) == 0 { // no variables extracted, fall back to pure fuzzy match score
+				if len(vars) == 0 { 
 					_, score = FuzzyMatchWithScore(intent, ds.SkillName)
 				}
 				if score < bestScore {
@@ -42,13 +88,37 @@ func MatchIntent(intent string) Skill {
 				}
 			}
 		} else {
-			// Advanced skill
 			if s.Match(intent) {
-				return s // Advanced skills always win if they match
+				return s
 			}
 		}
 	}
 	return bestSkill
+}
+
+func matchIntentFromDB(intent string) Skill {
+	db, err := sql.Open("sqlite", "app_actions.db")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+
+	// Simple exact/prefix matching for demonstration
+	var actionsStr string
+	err = db.QueryRow("SELECT actions FROM macros WHERE intent = ? LIMIT 1", intent).Scan(&actionsStr)
+	if err != nil {
+		return nil // Not found
+	}
+
+	var actions []executor.Action
+	if err := json.Unmarshal([]byte(actionsStr), &actions); err != nil {
+		return nil
+	}
+
+	return &DynamicSkill{
+		SkillName: intent,
+		Actions:   actions,
+	}
 }
 
 // Helper to check if a string contains all keywords
@@ -350,6 +420,42 @@ func LoadLearnedSkills() {
 			if err := json.Unmarshal(content, &skill); err == nil {
 				Register(&skill)
 				fmt.Printf("Loaded learned skill: %s\n", skill.SkillName)
+			}
+		}
+	}
+}
+
+func LoadAppActionsDatabase() {
+	dbPath := "app_actions"
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		os.Mkdir(dbPath, 0755)
+		return
+	}
+
+	files, err := os.ReadDir(dbPath)
+	if err != nil {
+		fmt.Printf("Error reading app_actions: %v\n", err)
+		return
+	}
+
+	for _, file := range files {
+		if strings.HasSuffix(file.Name(), ".json") {
+			content, err := os.ReadFile(filepath.Join(dbPath, file.Name()))
+			if err != nil {
+				continue
+			}
+
+			// Expecting an array of skills in each app's JSON file
+			var skills []DynamicSkill
+			if err := json.Unmarshal(content, &skills); err == nil {
+				for _, skill := range skills {
+					// We need to copy it so the pointer loop doesn't overwrite
+					s := skill
+					Register(&s)
+					fmt.Printf("Loaded app action: %s from %s\n", s.SkillName, file.Name())
+				}
+			} else {
+				fmt.Printf("Failed to parse %s: %v\n", file.Name(), err)
 			}
 		}
 	}

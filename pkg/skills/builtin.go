@@ -83,6 +83,14 @@ func InitBuiltinSkills() {
 				{Type: "key", Key: "enter"},
 			},
 		},
+		{
+			intent: "type {text} in {element}",
+			actions: []executor.Action{
+				{Type: "click_element", Name: "{element}"},
+				{Type: "sleep", Ms: 500},
+				{Type: "type", Text: "{text}"},
+			},
+		},
 	}
 
 	for _, m := range universalMacros {

@@ -68,3 +68,8 @@ temp_prompt.txt
 notify.ps1
 input.ps1
 *.exe~
+
+app_actions.db
+*.exe
+*.zip
+pkg/voice/model/

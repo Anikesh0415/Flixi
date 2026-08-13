@@ -34,6 +34,8 @@ $balloon.Dispose()
 	os.WriteFile("notify.ps1", []byte(ps1), 0644)
 	cmd := exec.Command("powershell", "-ExecutionPolicy", "Bypass", "-File", "notify.ps1")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	cmd.Start()
 }
 

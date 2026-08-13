@@ -2,64 +2,8 @@
   "name": "minimize all windows",
   "actions": [
     {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "["
-    },
-    {
-      "type": "type",
-      "text": "d"
-    },
-    {
-      "type": "type",
-      "text": "¢"
-    },
-    {
-      "type": "type",
-      "text": " "
+      "type": "key",
+      "key": "win+d"
     }
   ]
 }

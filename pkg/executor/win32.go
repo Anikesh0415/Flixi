@@ -212,6 +212,7 @@ func pressSpecialKey(keyName string) {
 	case "audio_vol_up": addKey(0xAF) // VK_VOLUME_UP
 	case "audio_vol_down": addKey(0xAE) // VK_VOLUME_DOWN
 	case "audio_mute": addKey(0xAD) // VK_VOLUME_MUTE
+	case "win+d": addCombo([]uint16{0x5B}, 0x44) // VK_LWIN + D
 	case "win+r": addCombo([]uint16{0x5B}, 0x52) // VK_LWIN + R
 	case "ctrl+n": addCombo([]uint16{0x11}, 0x4E) // VK_CONTROL + N
 	case "ctrl+p": addCombo([]uint16{0x11}, 0x50) // VK_CONTROL + P
