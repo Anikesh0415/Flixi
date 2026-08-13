@@ -43,7 +43,26 @@ func MatchIntent(intent string) Skill {
 			
 			// If it's a DynamicSkill, we can extract and append its actions
 			if ds, ok := partSkill.(*DynamicSkill); ok {
-				chainedActions = append(chainedActions, ds.Actions...)
+				vars, match := ExtractVariables(part, ds.SkillName)
+				if match && len(vars) > 0 {
+					// Inject variables immediately into this part's actions
+					for _, act := range ds.Actions {
+						injectedAct := act
+						if injectedAct.Type == "type" {
+							for k, v := range vars {
+								injectedAct.Text = strings.ReplaceAll(injectedAct.Text, "{"+k+"}", v)
+							}
+						}
+						if injectedAct.Name != "" {
+							for k, v := range vars {
+								injectedAct.Name = strings.ReplaceAll(injectedAct.Name, "{"+k+"}", v)
+							}
+						}
+						chainedActions = append(chainedActions, injectedAct)
+					}
+				} else {
+					chainedActions = append(chainedActions, ds.Actions...)
+				}
 			} else {
 				// Built-in Go skills can't easily be chained into JSON macros,
 				// so we fail the chain and let fallback handle it.
