@@ -73,7 +73,7 @@ func main() {
 		},
 	}
 
-	const totalRecords = 8000000
+	const totalRecords = 80000000
 	const batchSize = 100000
 
 	for i := 1; i <= totalRecords; i++ {
@@ -97,5 +97,5 @@ func main() {
 	}
 	tx.Commit()
 
-	fmt.Println("Successfully generated 8,000,000 application macros in app_actions.db!")
+	fmt.Println("Successfully generated 80,000,000 application macros in app_actions.db!")
 }
