@@ -12,11 +12,17 @@ import (
 )
 
 type Skill interface {
+	Name() string
 	Match(intent string) bool
 	Execute(intent string) error
-	Name() string
 }
 
+type ChainableSkill interface {
+	Skill
+	GetActions(intent string) ([]executor.Action, error)
+}
+
+// Registry stores all purely logic-based or hardcoded Go skills
 var Registry []Skill
 
 func Register(s Skill) {
@@ -28,6 +34,7 @@ func Register(s Skill) {
 
 func MatchIntent(intent string) Skill {
 	// 0. Handle Intent Chaining (Multi-Step Mega Macros)
+	intent = strings.ReplaceAll(intent, " and then ", " then ")
 	parts := strings.Split(intent, " then ")
 	if len(parts) > 1 {
 		var chainedActions []executor.Action
@@ -41,31 +48,16 @@ func MatchIntent(intent string) Skill {
 				break
 			}
 			
-			// If it's a DynamicSkill, we can extract and append its actions
-			if ds, ok := partSkill.(*DynamicSkill); ok {
-				vars, match := ExtractVariables(part, ds.SkillName)
-				if match && len(vars) > 0 {
-					// Inject variables immediately into this part's actions
-					for _, act := range ds.Actions {
-						injectedAct := act
-						if injectedAct.Type == "type" {
-							for k, v := range vars {
-								injectedAct.Text = strings.ReplaceAll(injectedAct.Text, "{"+k+"}", v)
-							}
-						}
-						if injectedAct.Name != "" {
-							for k, v := range vars {
-								injectedAct.Name = strings.ReplaceAll(injectedAct.Name, "{"+k+"}", v)
-							}
-						}
-						chainedActions = append(chainedActions, injectedAct)
-					}
+			if chainable, ok := partSkill.(ChainableSkill); ok {
+				actions, err := chainable.GetActions(part)
+				if err == nil {
+					chainedActions = append(chainedActions, actions...)
 				} else {
-					chainedActions = append(chainedActions, ds.Actions...)
+					matchedAll = false
+					break
 				}
 			} else {
-				// Built-in Go skills can't easily be chained into JSON macros,
-				// so we fail the chain and let fallback handle it.
+				// Pure Go skills that don't implement ChainableSkill fail the chain
 				matchedAll = false
 				break
 			}
@@ -177,6 +169,28 @@ type DynamicSkill struct {
 
 func (s *DynamicSkill) Name() string {
 	return s.SkillName
+}
+
+func (s *DynamicSkill) GetActions(intent string) ([]executor.Action, error) {
+	vars, match := ExtractVariables(intent, s.SkillName)
+	var injectedActions []executor.Action
+	for _, act := range s.Actions {
+		injectedAct := act
+		if match && len(vars) > 0 {
+			if injectedAct.Type == "type" {
+				for k, v := range vars {
+					injectedAct.Text = strings.ReplaceAll(injectedAct.Text, "{"+k+"}", v)
+				}
+			}
+			if injectedAct.Name != "" {
+				for k, v := range vars {
+					injectedAct.Name = strings.ReplaceAll(injectedAct.Name, "{"+k+"}", v)
+				}
+			}
+		}
+		injectedActions = append(injectedActions, injectedAct)
+	}
+	return injectedActions, nil
 }
 
 // levenshtein computes the Levenshtein distance between two strings

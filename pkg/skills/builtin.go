@@ -9,24 +9,17 @@ import (
 // InitBuiltinSkills registers universal dynamic skills directly in Go, removing the dependency on Python.
 func InitBuiltinSkills() {
 	// Universal Apps & Openers
-	openApps := []string{
-		"notepad", "calculator", "paint", "cmd", "powershell", "task manager",
-		"control panel", "snipping tool", "spotify", "discord", "whatsapp",
-		"telegram", "slack", "teams", "zoom", "brave", "chrome", "edge", "firefox",
-	}
-
-	for _, app := range openApps {
-		Register(&DynamicSkill{
-			SkillName: fmt.Sprintf("open %s", app),
-			Actions: []executor.Action{
-				{Type: "key", Key: "win"},
-				{Type: "sleep", Ms: 800},
-				{Type: "type", Text: app},
-				{Type: "sleep", Ms: 800},
-				{Type: "key", Key: "enter"},
-			},
-		})
-	}
+	// Replace hardcoded apps with a universal opener that types into Windows start menu
+	Register(&DynamicSkill{
+		SkillName: "open {app}",
+		Actions: []executor.Action{
+			{Type: "key", Key: "win"},
+			{Type: "sleep", Ms: 800},
+			{Type: "type", Text: "{app}"},
+			{Type: "sleep", Ms: 800},
+			{Type: "key", Key: "enter"},
+		},
+	})
 
 	// Universal Parameterized Macros
 	universalMacros := []struct {
@@ -118,11 +111,20 @@ func (s *UniversalSearchSkill) Match(intent string) bool {
 }
 
 func (s *UniversalSearchSkill) Execute(intent string) error {
+	actions, err := s.GetActions(intent)
+	if err != nil {
+		return err
+	}
+	executor.ExecutePlan(actions)
+	return nil
+}
+
+func (s *UniversalSearchSkill) GetActions(intent string) ([]executor.Action, error) {
 	lower := strings.ToLower(intent)
 	// Extract query and site: "search <query> on <site>"
 	parts := strings.Split(lower, " on ")
 	if len(parts) < 2 {
-		return fmt.Errorf("invalid search format")
+		return nil, fmt.Errorf("invalid search format")
 	}
 
 	query := strings.TrimPrefix(parts[0], "search ")
@@ -159,6 +161,5 @@ func (s *UniversalSearchSkill) Execute(intent string) error {
 		{Type: "key", Key: "enter"},
 	}
 
-	executor.ExecutePlan(actions)
-	return nil
+	return actions, nil
 }
